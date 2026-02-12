@@ -43,6 +43,9 @@ struct ControlIntent {
 }
 ```
 
+Note: `deploy_sentinel` is reserved for a later "sentinel" feature and is not implemented yet. The current code's
+`ControlIntent` does not include this field.
+
 ### Controller Trait
 
 ```rust
@@ -50,6 +53,13 @@ trait Controller {
     fn tick(&mut self, world: &WorldSnapshot, dt: f32) -> ControlIntent;
 }
 ```
+
+## Implementation Notes
+
+- Current file paths (post-refactor):
+- `src/controllers/mod.rs` defines `ControlIntent` and the `Controller` trait.
+- `src/controllers/human.rs` implements the human controller.
+- `src/ai/mod.rs` implements the AI controller and defines `WorldSnapshot` (currently in one module).
 
 ---
 
@@ -105,5 +115,3 @@ The AI is a *heuristic autopilot*, not a solver.
 - Human and AI players exercise identical downstream systems
 - AI can be used early for performance and fragmentation evaluation
 - Player-like imperfections are enforced structurally, not cosmetically
-
-Replace all instances of ‘```’ with ‘```’ for proper markdown rendering.

@@ -24,41 +24,31 @@ The game is intentionally engine-light (macroquad) so that performance, correctn
 cargo run
 ```
 
-### Run with a preset
+### Planned: CLI presets and toggles
 
-```bash
-cargo run -- --preset classic
-cargo run -- --preset ai_autopilot
-```
-
-### Run with explicit policy overrides
-
-```bash
-cargo run -- \
-  --preset classic \
-  --player-controller ai \
-  --ai-profile balanced \
-  --leaderboard local \
-  --physics arcade \
-  --collision player_only
-```
+This runbook previously referenced `--preset` and other CLI flags. Those are planned but not implemented yet.
+Today, presets and toggles are changed in-game from the Options screen (see Controls below).
 
 ---
 
 ## Control modes
 
-### Human controller (default)
+### Gameplay (human or autopilot)
 
 - Rotate: `A` / `D` (or `←` / `→`)
 - Thrust: `W` (or `↑`)
 - Fire primary: `Space`
-- Pause: `Esc`
-- Options: `O`
+- Fire secondary: `Shift`
+- Pause / resume: `P`
+- End run (back to main menu): `Esc`
+- Toggle autopilot: `U`
+- Toggle stats overlay: `T`
+- Toggle invulnerability (debug): `I`
 
 ### AI controller
 
-- Selectable via Options: `Player Controller = AI`
-- Or via CLI: `--player-controller ai --ai-profile balanced`
+Autopilot can be toggled at runtime with `U`. When autopilot is enabled, `P` cycles AI profile.
+Planned: wiring presets and CLI to configure AI controller selection directly.
 
 The AI controller is intentionally constrained (reaction delay, noise, limited awareness) to remain player-like and suitable for evaluation.
 
@@ -68,13 +58,9 @@ The AI controller is intentionally constrained (reaction delay, noise, limited a
 
 Presets map gameplay intent to coherent policy configurations and performance budgets.
 
-- `classic` — faithful baseline, minimal policies, local leaderboard
-- `arcade_upgrades` — baseline with progression systems enabled
-- `ai_autopilot` — baseline with AI controlling the ship (evaluation preset)
-- `fracture` — convex polygon slicing + lite physics
-- `horde` — dense spawns, bounded fragmentation, `BigOnly` collisions
-- `simulation` — higher physical fidelity (warned, guarded)
-- `custom` — exposes all toggles and budget knobs
+- Implemented (in-game options via `Y`): `classic`, `arcade_upgrades`
+- Planned / partial: `ai_autopilot` (config exists; autopilot engagement wiring is in-progress)
+- Planned: `fracture`, `horde`, `simulation`, `custom`
 
 See [Settings & Presets Matrix](design/settings_and_presets_matrix.md)
 
@@ -82,22 +68,30 @@ See [Settings & Presets Matrix](design/settings_and_presets_matrix.md)
 
 ## Feature toggles (policies)
 
-All optional features are implemented as runtime policies rather than compile-time forks.
+Optional features are intended to be implemented as runtime policies rather than compile-time forks. Some are still planned.
 
 - Player controller: `Human | AI(profile)`
 - Physics mode: `Off | Arcade | Lite`
 - Collision policy: `PlayerOnly | BigOnly | Full`
 - Fragmentation mode: `Off | ClassicSplit | SliceOnly | Explode | Full`
 - Upgrades: enabled / disabled
-- Performance Guard: enabled / disabled
+- Performance Guard toggle: planned (guard exists; toggle is not exposed yet)
 
 See [Design Analysis](design/design_analysis.md)
 
 ---
 
+## Menus and hotkeys
+
+- Main menu: `P` start, `O` options, `L` leaderboard, `Esc` quit
+- Options: `Y` cycle presets, `C` collision, `K` physics, `F` fragmentation, `L` leaderboard mode, `G` upgrades, `Enter`/`Esc` back
+- Game over: type name, `Backspace` delete, `Enter` submit, `Esc` cancel
+
+---
+
 ## Early milestone
 
-The first delivery target is **Epic 1 + Epic 1A**:
+Epics 1, 1A, and 1B are considered complete:
 
 - Classic Asteroids baseline (score + local leaderboard)
 - Toggleable AI autopilot that plays in a player-like manner

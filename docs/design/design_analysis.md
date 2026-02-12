@@ -109,5 +109,3 @@ Progression is content-driven and can be layered over the same core policies:
 - unlock weapons (laser slice, drill explosion)
 - unlock ship upgrades
 - unlock advanced presets (Simulation-ish / Experimental) with clear warnings
-
-Replace all instances of ‘^^^’ with ‘```’ for proper markdown rendering.

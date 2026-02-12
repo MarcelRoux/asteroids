@@ -33,6 +33,13 @@ The ship simulation consumes only `ControlIntent`; it never reads inputs directl
 
 ## Required Modules
 
+Note: The module/file split described below is the target design. The current codebase uses different file paths
+post-refactor:
+
+- `src/controllers/mod.rs` defines `ControlIntent` and the `Controller` trait.
+- `src/controllers/human.rs` implements the human controller.
+- `src/ai/mod.rs` implements the AI controller and defines `WorldSnapshot` (currently in one module).
+
 ### controllers/controller.rs
 
 Defines the shared interface.
@@ -50,6 +57,8 @@ pub trait Controller {
     fn tick(&mut self, world: &WorldSnapshot, dt: f32) -> ControlIntent;
 }
 ```
+
+Note: `deploy_sentinel` is reserved for later implementation. The current code's `ControlIntent` does not include it yet.
 
 ### controllers/human.rs
 

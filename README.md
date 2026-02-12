@@ -1,6 +1,6 @@
 # Asteroids
 
-Rust Asteroids — deterministic baseline + toggleable AI autopilot, designed as a portfolio-grade systems project.
+Rust Asteroids — determinism-targeting baseline + toggleable AI autopilot, designed as a portfolio-grade systems project.
 
 This repo is built around **bounded-cost simulation**, **policy toggles** (physics/collision/fragmentation), and **repeatable evaluation** (AI autopilot + soak tests + HUD instrumentation).
 
@@ -17,49 +17,52 @@ This repo is built around **bounded-cost simulation**, **policy toggles** (physi
 cargo run
 ```
 
-### Run with a specific preset (recommended)
+### Planned: CLI presets and toggles
 
-```bash
-cargo run -- --preset classic
-cargo run -- --preset ai_autopilot
-```
-
-### Run with explicit toggles (override preset)
-
-```bash
-cargo run -- \
-  --preset classic \
-  --player-controller ai \
-  --ai-profile balanced \
-  --leaderboard local \
-  --physics arcade \
-  --collision player_only
-```
+This README previously documented `--preset` and other CLI flags. Those are **planned** but not implemented yet.
+Today, presets and toggles are changed in-game from the Options screen (see Controls).
 
 ## Controls
 
-### Human controller (default)
+### Gameplay
 
 - Rotate left/right: `A` / `D` (or `←` / `→`)
 - Thrust: `W` (or `↑`)
 - Fire primary: `Space`
-- Pause: `Esc`
+- Fire secondary: `Shift`
+- Pause / resume: `P`
+- End run (back to main menu): `Esc`
+- Toggle autopilot: `U`
+- Toggle stats overlay: `T`
+- Toggle invulnerability (debug): `I`
+
+### Main menu
+
+- Start run: `P`
 - Options: `O`
+- Leaderboard: `L`
+- Quit: `Esc`
+
+### Options
+
+- Cycle presets: `Y`
+- Cycle collision policy: `C`
+- Cycle physics mode: `K`
+- Cycle fragmentation mode: `F`
+- Toggle leaderboard mode: `L`
+- Toggle upgrades: `G`
+- Back: `Enter` / `Esc`
 
 ### AI controller
 
-- Enable in Options: `Player Controller = AI`
-- Or via CLI: `--player-controller ai --ai-profile balanced`
+AI autopilot can be toggled at runtime with `U`. When autopilot is enabled, `P` cycles AI profile.
+Planned: wiring the "AI Autopilot" preset to auto-enable autopilot, and enabling CLI flags for presets/toggles.
 
 ## Presets (high-level)
 
-- `classic` — faithful baseline, minimal policies, local leaderboard
-- `arcade_upgrades` — baseline with upgrades enabled
-- `ai_autopilot` — baseline with AI controlling the ship (evaluation bot)
-- `fracture` — polygon slicing + lite physics
-- `horde` — dense spawns, bounded fragmentation, BigOnly collisions
-- `simulation` — warned mode (Full collisions), guard enabled
-- `custom` — exposes all toggles and budget knobs
+- Implemented (in-game options via `Y`): `classic`, `arcade_upgrades`
+- Planned / partial: `ai_autopilot` (config exists; autopilot engagement wiring is in-progress)
+- Planned: `fracture`, `horde`, `simulation`, `custom`
 
 See [Settings & Presets Matrix](docs/design/settings_and_presets_matrix.md)
 
@@ -73,7 +76,7 @@ Toggles are treated as **policies**, not compile-time forks.
 - Collision policy: `PlayerOnly | BigOnly | Full`
 - Fragmentation mode: `Off | ClassicSplit | SliceOnly | Explode | Full`
 - Upgrades: enabled/disabled
-- Performance Guard: enabled/disabled
+- Performance Guard toggle: planned (guard exists; toggle is not exposed yet)
 
 See [Design Analysis](docs/design/design_analysis.md)
 
@@ -83,7 +86,7 @@ For the early-stage target milestone, follow:
 
 See [Getting Started](docs/getting_started.md)
 
-The first goal is **Epic 1 + Epic 1A**:
+Epics **1**, **1A**, and **1B** are considered complete:
 
 - Classic Asteroids playable (score + leaderboard)
 - AI autopilot toggle plays in a player-like way (no aimbot)

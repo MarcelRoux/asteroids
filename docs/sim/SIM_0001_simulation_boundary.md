@@ -61,6 +61,9 @@ This project targets **practical determinism**:
 
 Perfect lockstep determinism is not required initially, but the architecture does not preclude it.
 
+Implementation note: the current codebase still uses RNG for gameplay (e.g. spawns/variation via `macroquad::rand`).
+Determinism is a goal, but it is not fully enforced yet.
+
 ## Non-Goals
 
 - No simulation logic inside rendering code

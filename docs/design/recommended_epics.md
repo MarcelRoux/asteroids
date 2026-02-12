@@ -79,6 +79,55 @@ Enable a player-like AI controller via runtime toggle to support early evaluatio
 
 ---
 
+## Epic 1B — Remaining Asteroids Game Mechanics
+
+### Objective
+
+Bring game closer to the classic game by implementing additional game mechanics.
+
+### Deliverables
+
+- Improved resolution of ship (akin to classic game).
+- Indication of thrust (akin to classic game).
+- Player (and AI) name capturing at game over (exit should not persist score).
+- A life is gained for every 10_000 points.
+- Basic small alien ship following horizonal path, firing at player with accuracy that is score-based:
+  - Alien ship fires at player in a cone that starts wide and becomes narrower (more accurate) as the player gains points.
+  - Alien ship bullet is equivalent to player bullet at this time.
+  - Up to 2 small alien ships may spawn at a time.
+  - Starts to spawn randomly after 40_000 points have been reached.
+  - Small alien ship hit score: 1000.
+- Basic large alien ship following horizontal path, firing at player with accuracy that is score-based:
+  - Alien ship fires at player in a cone that starts wide and becomes narrowwer (more accurate) as the player gains points.
+  - Alien ship bullet is equivalent to player bullet at this time.
+  - Up to 1 large alien ship may spawn at a time.
+  - Starts to spawn randomly after 40_000 points have been reached.
+  - Large alien ship hit score: 200.
+- Menu and leaderboard etc. polish to put the elements in the middle as opposed to top left of the screen.
+- Leaderboard polish to right align the numerical scores for better perception of orders of magnitude.
+- Stretch: Additional statistics to track.
+  - Player shots fired.
+  - Player shots hit.
+  - Player accuracy - based on above values.
+  - Per-entity hit breakdown:
+    - Large asteroid.
+    - Medium asteroid.
+    - Small asteroid.
+    - Large alien ship.
+    - Small alien ship.
+- Stretch: Display additional statistics in the debug overlay and store alongside leaderboard statistics.
+
+### Acceptance criteria
+
+-
+- With Player Controller = AI, the ship survives and scores in Classic mode without frame-perfect aim.
+- AI behavior is purposeful (no visible “fading” or dithering) due to commitment windows.
+- AI cost is bounded (e.g. <0.5 ms/frame at 1,000 entities under `collision_policy = PlayerOnly`).
+- Human and AI controllers exercise identical downstream systems via `ControlIntent`.
+- AI-enabled soak test runs 10 minutes with no memory growth or entity runaway.
+
+---
+
 ## Epic 2 — Progression and upgrades panel
 
 ### Objective

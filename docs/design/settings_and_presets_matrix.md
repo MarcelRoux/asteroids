@@ -75,5 +75,3 @@ The only configuration that can reliably collapse performance is the combination
 - high `FRAG_EVENT_CAP`.
 
 Presets and the Performance Guard are designed to prevent accidental entry into this regime.
-
-Replace all instances of ‘^^^’ with ‘```’ for proper markdown rendering.
