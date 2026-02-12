@@ -1,3 +1,4 @@
+use crate::stats::RunStats;
 use std::cmp::Reverse;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
@@ -10,21 +11,27 @@ const MAX_ENTRIES: usize = 10;
 pub struct ScoreEntry {
     pub name: String,
     pub score: u32,
+    pub stats: RunStats,
 }
 
 impl ScoreEntry {
     fn serialize(&self) -> String {
-        format!("{}|{}", self.score, self.name)
+        format!("{}|{}|{}", self.score, self.name, self.stats.serialize())
     }
 
     fn parse(line: &str) -> Option<Self> {
-        let mut parts = line.splitn(2, '|');
+        let mut parts = line.splitn(3, '|');
         let score_part = parts.next()?;
         let name_part = parts.next()?;
+        let stats_part = parts.next();
         let score = score_part.parse().ok()?;
+        let stats = stats_part
+            .and_then(|text| RunStats::parse(text))
+            .unwrap_or_default();
         Some(Self {
             name: name_part.to_string(),
             score,
+            stats,
         })
     }
 }
@@ -62,10 +69,11 @@ impl Leaderboard {
         }
     }
 
-    pub fn submit(&mut self, name: &str, score: u32) {
+    pub fn submit(&mut self, name: &str, score: u32, stats: RunStats) {
         self.entries.push(ScoreEntry {
             name: name.to_string(),
             score,
+            stats,
         });
         self.normalize();
     }
@@ -101,11 +109,21 @@ mod tests {
         let entry = ScoreEntry {
             name: "tester".to_string(),
             score: 1234,
+            stats: RunStats {
+                shots_fired: 12,
+                shots_hit: 8,
+                hits_large_asteroid: 3,
+                hits_medium_asteroid: 2,
+                hits_small_asteroid: 3,
+                hits_large_alien: 1,
+                hits_small_alien: 0,
+            },
         };
         let serialized = entry.serialize();
         let parsed = ScoreEntry::parse(&serialized).expect("should parse serialized");
         assert_eq!(parsed.name, "tester");
         assert_eq!(parsed.score, 1234);
+        assert_eq!(parsed.stats, entry.stats);
         assert!(ScoreEntry::parse("garbage").is_none());
     }
 
@@ -113,7 +131,7 @@ mod tests {
     fn leaderboard_submit_normalizes() {
         let mut leaderboard = Leaderboard::default();
         for score in 0u32..(MAX_ENTRIES as u32 + 5) {
-            leaderboard.submit("player", score);
+            leaderboard.submit("player", score, RunStats::default());
         }
         assert_eq!(leaderboard.entries().len(), MAX_ENTRIES);
         assert_eq!(leaderboard.entries()[0].score, MAX_ENTRIES as u32 + 4);
@@ -143,8 +161,8 @@ mod tests {
         let dir = tempdir().unwrap();
         run_in_temp_dir(&dir, || {
             let mut board = Leaderboard::default();
-            board.submit("alpha", 50);
-            board.submit("bravo", 150);
+            board.submit("alpha", 50, RunStats::default());
+            board.submit("bravo", 150, RunStats::default());
             board.save();
             let reloaded = Leaderboard::load();
             assert_eq!(reloaded.entries().len(), 2);

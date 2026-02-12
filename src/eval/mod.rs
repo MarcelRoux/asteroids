@@ -1,5 +1,3 @@
-use crate::simulation::Simulation;
-
 pub struct PerformanceGuard {
     last_fps: f32,
     degrade_threshold: f32,
@@ -13,8 +11,8 @@ impl PerformanceGuard {
         }
     }
 
-    pub fn observe(&mut self, simulation: &Simulation) {
-        self.last_fps = simulation.status().fps;
+    pub fn observe(&mut self, fps: f32) {
+        self.last_fps = fps;
     }
 
     pub fn should_degrade(&self) -> bool {

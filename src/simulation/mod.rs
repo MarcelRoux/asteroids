@@ -1,69 +1,63 @@
 use crate::ai::{AsteroidSnapshot, WorldSnapshot};
 use crate::config::{GameConfig, PlayerControllerMode};
 use crate::controllers::{ControlIntent, Controller};
-use macroquad::prelude::{
-    Color, LIGHTGRAY, Vec2, WHITE, draw_circle, draw_line, draw_triangle, screen_height,
-    screen_width, vec2,
-};
-use macroquad::rand::gen_range;
-use std::f32::consts::{FRAC_PI_2, PI};
+use crate::stats::RunStats;
+use macroquad::prelude::{Color, Vec2};
+use std::f32::consts::PI;
 
 const SHIP_THRUST: f32 = 400.0;
 const SHIP_MAX_SPEED: f32 = 320.0;
-const SHIP_DRAG: f32 = 1.5;
+const SHIP_DRAG: f32 = 0.25;
 const SHIP_ROTATION_SPEED: f32 = 3.0;
 const SHIP_SIZE: f32 = 14.0;
-const INVULN_DURATION: f32 = 4.0;
+const SHIP_STROKE: f32 = 2.0;
+const SAUCER_STROKE: f32 = 2.0;
+const SMALL_ALIEN_DRAW_SCALE: f32 = 12.0;
+const LARGE_ALIEN_DRAW_SCALE: f32 = 24.0;
+const INVULNERABILITY_DURATION: f32 = 3.0;
+const SHIP_DRAW_OFFSET: f32 = -std::f32::consts::PI / 2.0;
 
-const ASTEROID_MIN_SPEED: f32 = 30.0;
+// TODO: Increased 10x for the time being due to much more powerful weapons.
+const EXTRA_LIFE_SCORE_STEP: u32 = 10_000;
+
+const ALIEN_SPAWN_SCORE_THRESHOLD: u32 = 40_000;
+const ALIEN_SPAWN_INTERVAL: f32 = 5.0;
+const SMALL_ALIEN_Y: f32 = 110.0;
+const LARGE_ALIEN_Y: f32 = 70.0;
+const SMALL_ALIEN_SPEED: f32 = 160.0;
+const LARGE_ALIEN_SPEED: f32 = 96.0;
+const SMALL_ALIEN_FIRE_INTERVAL: f32 = 1.1;
+const LARGE_ALIEN_FIRE_INTERVAL: f32 = 1.9;
+const MAX_SMALL_ALIENS: usize = 2;
+const MAX_LARGE_ALIENS: usize = 1;
+const SMALL_ALIEN_SCORE: u32 = 1000;
+const LARGE_ALIEN_SCORE: u32 = 200;
+
+const ASTEROID_MIN_SPEED: f32 = 20.0;
 const ASTEROID_MAX_SPEED: f32 = 90.0;
-const ASTEROID_SPAWN_INTERVAL: f32 = 0.50;
+const ASTEROID_SPAWN_INTERVAL: f32 = 2.5;
 const BULLET_SPEED: f32 = 520.0;
 const BULLET_RADIUS: f32 = 2.0;
 const BULLET_TTL: f32 = 2.0;
-const PRIMARY_FIRE_RATE: f32 = 5.0;
-const SECONDARY_FIRE_RATE: f32 = PRIMARY_FIRE_RATE / 5.0;
-const SECONDARY_SPREAD: f32 = PI / 12.0;
-const SECONDARY_COUNT: usize = 5;
+const PRIMARY_FIRE_RATE: f32 = 10.0;
+const SECONDARY_COUNT: usize = 21;
+const SECONDARY_FIRE_RATE: f32 = PRIMARY_FIRE_RATE / SECONDARY_COUNT as f32;
+const SECONDARY_SPREAD: f32 = PI / 36.0;
 const MAX_LIVES: u32 = 3;
 const ASTEROID_SCORE_BASE: u32 = 100;
 const DEBRIS_TTL: f32 = 1.0;
 const DEBRIS_SPEED: f32 = 120.0;
 const DEBRIS_COUNT: usize = 6;
 const DEBRIS_COLOR: Color = Color::new(1.0, 0.75, 0.3, 1.0);
+const ALIEN_DEBRIS_COLOR: Color = Color::new(1.0, 0.2, 0.3, 1.0);
+const PLAYER_DEBRIS_COLOR: Color = Color::new(0.35, 0.8, 1.0, 1.0);
 
-#[derive(Clone, Copy)]
-enum AsteroidSize {
-    Large,
-    Medium,
-    Small,
-}
+const TARGET_FPS: f32 = 60.0;
 
-impl AsteroidSize {
-    fn radius(&self) -> f32 {
-        match self {
-            AsteroidSize::Large => 28.0,
-            AsteroidSize::Medium => 18.0,
-            AsteroidSize::Small => 10.0,
-        }
-    }
-
-    fn next(&self) -> Option<AsteroidSize> {
-        match self {
-            AsteroidSize::Large => Some(AsteroidSize::Medium),
-            AsteroidSize::Medium => Some(AsteroidSize::Small),
-            AsteroidSize::Small => None,
-        }
-    }
-
-    fn score(&self) -> u32 {
-        match self {
-            AsteroidSize::Large => ASTEROID_SCORE_BASE,
-            AsteroidSize::Medium => ASTEROID_SCORE_BASE * 2,
-            AsteroidSize::Small => ASTEROID_SCORE_BASE * 4,
-        }
-    }
-}
+mod model;
+use self::model::*;
+mod render;
+mod systems;
 
 pub struct Simulation {
     controller: Box<dyn Controller>,
@@ -78,7 +72,12 @@ pub struct Simulation {
     lives: u32,
     dt: f32,
     status: SimulationStatus,
-    invuln_timer: f32,
+    invulnerability_timer: f32,
+    invulnerability_enabled: bool,
+    run_stats: RunStats,
+    aliens: Vec<Alien>,
+    alien_spawn_acc: f32,
+    next_extra_life_score: u32,
 }
 
 impl Simulation {
@@ -103,9 +102,14 @@ impl Simulation {
             bullets: Vec::new(),
             debris: Vec::new(),
             lives: MAX_LIVES,
-            dt: 1.0 / 60.0,
+            dt: 1.0 / TARGET_FPS,
             status: SimulationStatus::default(),
-            invuln_timer: INVULN_DURATION,
+            invulnerability_timer: INVULNERABILITY_DURATION,
+            invulnerability_enabled: false,
+            run_stats: RunStats::default(),
+            aliens: Vec::new(),
+            alien_spawn_acc: 0.0,
+            next_extra_life_score: EXTRA_LIFE_SCORE_STEP,
         }
     }
 
@@ -142,23 +146,56 @@ impl Simulation {
         self.controller = controller;
     }
 
+    pub fn toggle_invulnerability(&mut self) {
+        self.invulnerability_enabled = !self.invulnerability_enabled;
+        self.status.invulnerability_enabled = self.invulnerability_enabled;
+    }
+
+    fn record_player_shot(&mut self) {
+        self.run_stats.shots_fired = self.run_stats.shots_fired.saturating_add(1);
+    }
+
+    fn record_player_hit(&mut self, target: HitTarget) {
+        self.run_stats.shots_hit = self.run_stats.shots_hit.saturating_add(1);
+        match target {
+            HitTarget::LargeAsteroid => {
+                self.run_stats.hits_large_asteroid =
+                    self.run_stats.hits_large_asteroid.saturating_add(1)
+            }
+            HitTarget::MediumAsteroid => {
+                self.run_stats.hits_medium_asteroid =
+                    self.run_stats.hits_medium_asteroid.saturating_add(1)
+            }
+            HitTarget::SmallAsteroid => {
+                self.run_stats.hits_small_asteroid =
+                    self.run_stats.hits_small_asteroid.saturating_add(1)
+            }
+            HitTarget::LargeAlien => {
+                self.run_stats.hits_large_alien = self.run_stats.hits_large_alien.saturating_add(1)
+            }
+            HitTarget::SmallAlien => {
+                self.run_stats.hits_small_alien = self.run_stats.hits_small_alien.saturating_add(1)
+            }
+        }
+    }
+
     pub fn step(&mut self) {
         self.status.frame += 1;
         let intent = self.status.last_intent.unwrap_or_default();
         self.update_ship(intent);
         self.handle_firing(intent);
         self.update_asteroids();
-        self.spawn_acc += self.dt;
-        while self.spawn_acc >= ASTEROID_SPAWN_INTERVAL {
-            self.spawn_acc -= ASTEROID_SPAWN_INTERVAL;
-            self.spawn_asteroid();
-        }
+        self.tick_asteroid_spawns();
+
         self.update_bullets();
         self.update_debris();
+        self.update_aliens();
         self.resolve_collisions();
+
         self.primary_cooldown = (self.primary_cooldown - self.dt).max(0.0);
         self.secondary_cooldown = (self.secondary_cooldown - self.dt).max(0.0);
-        self.invuln_timer = (self.invuln_timer - self.dt).max(0.0);
+        self.invulnerability_timer = (self.invulnerability_timer - self.dt).max(0.0);
+
         self.status.asteroid_count = self.asteroids.len();
         self.status.bullet_count = self.bullets.len();
         self.status.active_bodies = 1 + self.asteroids.len() + self.bullets.len();
@@ -168,382 +205,26 @@ impl Simulation {
         self.status.fps = 1.0 / self.dt;
         self.status.lives = self.lives;
         self.status.game_over = self.lives == 0;
+        self.status.invulnerability_enabled = self.invulnerability_enabled;
+        self.status.run_stats = self.run_stats.clone();
     }
 
     pub fn policy(&mut self) -> &mut SimulationPolicy {
         &mut self.policy
     }
 
-    pub fn draw_debug(&self) {
-        for asteroid in &self.asteroids {
-            let points = asteroid.points();
-            if points.len() > 1 {
-                for i in 0..points.len() {
-                    let a = points[i];
-                    let b = points[(i + 1) % points.len()];
-                    draw_line(a.x, a.y, b.x, b.y, 2.0, LIGHTGRAY);
-                }
-            }
-        }
-
-        let (nose, left, right) = self.ship_triangle();
-        draw_triangle(nose, left, right, WHITE);
-        if self.invuln_timer > 0.0 {
-            let alpha = ((self.invuln_timer / INVULN_DURATION) * 0.8).clamp(0.2, 0.8);
-            draw_circle(
-                self.ship.position.x,
-                self.ship.position.y,
-                SHIP_SIZE * 1.4,
-                Color::new(0.2, 0.8, 1.0, alpha),
-            );
-        }
-
-        for bullet in &self.bullets {
-            draw_circle(
-                bullet.position.x,
-                bullet.position.y,
-                BULLET_RADIUS,
-                Color::new(1.0, 0.9, 0.4, 1.0),
-            );
-        }
-
-        for debris in &self.debris {
-            draw_circle(debris.position.x, debris.position.y, 2.0, DEBRIS_COLOR);
-        }
-    }
-
     pub fn status(&self) -> SimulationStatus {
         self.status.clone()
     }
 
-    fn update_ship(&mut self, intent: ControlIntent) {
-        self.ship.angle += intent.turn * SHIP_ROTATION_SPEED * self.dt;
-        let forward = Vec2::from_angle(self.ship.angle);
-
-        if intent.thrust > 0.0 {
-            self.ship.velocity += forward * (intent.thrust * SHIP_THRUST * self.dt);
-        }
-
-        self.ship.velocity -= self.ship.velocity * SHIP_DRAG * self.dt;
-        self.ship.velocity = clamp_length(self.ship.velocity, SHIP_MAX_SPEED);
-        self.ship.position = wrap_position(self.ship.position + self.ship.velocity * self.dt);
-    }
-
-    fn handle_firing(&mut self, intent: ControlIntent) {
-        if intent.fire_primary && self.primary_cooldown <= 0.0 {
-            self.primary_cooldown = 1.0 / PRIMARY_FIRE_RATE;
-            let forward = Vec2::from_angle(self.ship.angle);
-            let spawn_pos = self.ship.position + forward * SHIP_SIZE;
-            let spawn_velocity = forward * BULLET_SPEED;
-            self.spawn_bullet(spawn_pos, spawn_velocity);
-        }
-
-        if intent.fire_secondary && self.secondary_cooldown <= 0.0 {
-            self.secondary_cooldown = 1.0 / SECONDARY_FIRE_RATE;
-            let base_angle = self.ship.angle;
-            let center = (SECONDARY_COUNT as f32 - 1.0) * 0.5;
-            for i in 0..SECONDARY_COUNT {
-                let offset = (i as f32 - center) * SECONDARY_SPREAD;
-                let dir = Vec2::from_angle(base_angle + offset);
-                let spawn_pos = self.ship.position + dir * SHIP_SIZE;
-                self.spawn_bullet(spawn_pos, dir * BULLET_SPEED);
-            }
+    fn spawn_bullet(&mut self, position: Vec2, velocity: Vec2, source: BulletSource) {
+        self.bullets.push(Bullet::new(position, velocity, source));
+        if source == BulletSource::Player {
+            self.record_player_shot();
         }
     }
 
-    fn update_bullets(&mut self) {
-        self.bullets.retain_mut(|bullet| {
-            bullet.ttl -= self.dt;
-            if bullet.ttl <= 0.0 {
-                return false;
-            }
-            bullet.position = wrap_position(bullet.position + bullet.velocity * self.dt);
-            true
-        });
-    }
-
-    fn update_debris(&mut self) {
-        self.debris.retain_mut(|debris| {
-            debris.ttl -= self.dt;
-            if debris.ttl <= 0.0 {
-                return false;
-            }
-            debris.position = wrap_position(debris.position + debris.velocity * self.dt);
-            true
-        });
-    }
-
-    fn resolve_collisions(&mut self) {
-        let mut bullet_hits = vec![false; self.bullets.len()];
-        let mut asteroid_hits = vec![false; self.asteroids.len()];
-        let ship_radius = SHIP_SIZE * 0.9;
-        let mut fragments = Vec::new();
-        let mut earned_score: u32 = 0;
-        let mut destroyed_asteroids = Vec::new();
-        for (bi, bullet) in self.bullets.iter().enumerate() {
-            if bullet_hits[bi] {
-                continue;
-            }
-            for (ai, asteroid) in self.asteroids.iter().enumerate() {
-                if asteroid_hits[ai] {
-                    continue;
-                }
-                let radius_sum = asteroid.radius() + BULLET_RADIUS;
-                if bullet.position.distance_squared(asteroid.position) <= radius_sum * radius_sum {
-                    bullet_hits[bi] = true;
-                    asteroid_hits[ai] = true;
-                    earned_score = earned_score.saturating_add(asteroid.size.score());
-                    fragments.extend(asteroid.split());
-                    destroyed_asteroids.push(asteroid.clone());
-                    break;
-                }
-            }
-        }
-
-        let mut ship_hit = false;
-        for (ai, asteroid) in self.asteroids.iter().enumerate() {
-            let radius_sum = asteroid.radius() + ship_radius;
-            if self.invuln_timer <= 0.0
-                && self.ship.position.distance_squared(asteroid.position) <= radius_sum * radius_sum
-            {
-                asteroid_hits[ai] = true;
-                ship_hit = true;
-            }
-        }
-
-        if ship_hit {
-            if self.lives > 0 {
-                self.lives -= 1;
-            }
-            if self.lives > 0 {
-                self.reset_ship();
-            }
-        }
-
-        self.status.score = self.status.score.saturating_add(earned_score);
-
-        for asteroid in destroyed_asteroids {
-            self.spawn_debris(&asteroid);
-        }
-
-        let mut survivors = Vec::new();
-        for (i, asteroid) in self.asteroids.iter().enumerate() {
-            if asteroid_hits[i] {
-                continue;
-            }
-            survivors.push(asteroid.clone());
-        }
-        survivors.extend(fragments);
-        self.asteroids = survivors;
-    }
-
-    fn spawn_debris(&mut self, asteroid: &Asteroid) {
-        for _ in 0..DEBRIS_COUNT {
-            let disk = Vec2::from_angle(gen_range(0.0, 2.0 * PI));
-            let velocity = disk * DEBRIS_SPEED;
-            self.debris.push(Debris::new(asteroid.position, velocity));
-        }
-    }
-
-    fn reset_ship(&mut self) {
-        self.ship.position = vec2(screen_width() / 2.0, screen_height() / 2.0);
-        self.ship.velocity = Vec2::ZERO;
-        self.ship.angle = -PI / 2.0;
-        self.invuln_timer = INVULN_DURATION;
-    }
-
-    fn update_asteroids(&mut self) {
-        for asteroid in &mut self.asteroids {
-            asteroid.angle += asteroid.rotation_speed * self.dt;
-            let target = asteroid.position + asteroid.velocity * self.dt;
-            asteroid.position = wrap_position(target);
-        }
-    }
-
-    fn spawn_asteroid(&mut self) {
-        let width = screen_width();
-        let height = screen_height();
-        let side = gen_range(0, 4);
-        let mut position = match side {
-            0 => vec2(gen_range(0.0, width), 0.0),
-            1 => vec2(width, gen_range(0.0, height)),
-            2 => vec2(gen_range(0.0, width), height),
-            _ => vec2(0.0, gen_range(0.0, height)),
-        };
-
-        // Avoid spawning too close to the ship
-        if position.distance(self.ship.position) < SHIP_SIZE * 2.0 {
-            let offset = Vec2::from_angle(gen_range(0.0, 2.0 * PI)) * (SHIP_SIZE * 3.0);
-            position += offset;
-        }
-
-        let angle = gen_range(0.0, 2.0 * PI);
-        let speed = gen_range(ASTEROID_MIN_SPEED, ASTEROID_MAX_SPEED);
-        let velocity = Vec2::from_angle(angle) * speed;
-        self.asteroids
-            .push(Asteroid::new(AsteroidSize::Large, position, velocity));
-    }
-
-    fn spawn_bullet(&mut self, position: Vec2, velocity: Vec2) {
-        self.bullets.push(Bullet::new(position, velocity));
-    }
-
-    fn ship_triangle(&self) -> (Vec2, Vec2, Vec2) {
-        let nose = self.ship.position + Vec2::from_angle(self.ship.angle) * SHIP_SIZE;
-        let rear = self.ship.position - Vec2::from_angle(self.ship.angle) * (SHIP_SIZE * 0.5);
-        let perp = Vec2::from_angle(self.ship.angle + FRAC_PI_2) * (SHIP_SIZE * 0.4);
-        let left = rear + perp;
-        let right = rear - perp;
-        (nose, left, right)
-    }
-}
-fn wrap_position(position: Vec2) -> Vec2 {
-    let width = screen_width();
-    let height = screen_height();
-    let mut result = position;
-    if result.x < 0.0 {
-        result.x += width;
-    } else if result.x > width {
-        result.x -= width;
-    }
-
-    if result.y < 0.0 {
-        result.y += height;
-    } else if result.y > height {
-        result.y -= height;
-    }
-
-    result
-}
-fn clamp_length(value: Vec2, max: f32) -> Vec2 {
-    let len_sq = value.length_squared();
-    if len_sq > max * max {
-        value.normalize() * max
-    } else {
-        value
-    }
-}
-
-fn generate_shape(size: AsteroidSize) -> Vec<Vec2> {
-    let base_radius = size.radius();
-    let vertex_count = match size {
-        AsteroidSize::Large => 12,
-        AsteroidSize::Medium => 10,
-        AsteroidSize::Small => 8,
-    };
-    (0..vertex_count)
-        .map(|i| {
-            let theta = (i as f32 / vertex_count as f32) * 2.0 * PI;
-            let jitter = gen_range(0.8, 1.2);
-            Vec2::from_angle(theta) * base_radius * jitter
-        })
-        .collect()
-}
-
-fn rotate_vector(vec: Vec2, angle: f32) -> Vec2 {
-    let cos = angle.cos();
-    let sin = angle.sin();
-    Vec2::new(vec.x * cos - vec.y * sin, vec.x * sin + vec.y * cos)
-}
-
-struct Ship {
-    position: Vec2,
-    velocity: Vec2,
-    angle: f32,
-}
-
-impl Ship {
-    fn centered() -> Self {
-        Self {
-            position: vec2(screen_width() / 2.0, screen_height() / 2.0),
-            velocity: Vec2::ZERO,
-            angle: -PI / 2.0,
-        }
-    }
-}
-
-#[derive(Clone)]
-struct Asteroid {
-    position: Vec2,
-    velocity: Vec2,
-    size: AsteroidSize,
-    angle: f32,
-    rotation_speed: f32,
-    shape: Vec<Vec2>,
-}
-
-impl Asteroid {
-    fn new(size: AsteroidSize, position: Vec2, velocity: Vec2) -> Self {
-        Self {
-            position,
-            velocity,
-            size,
-            angle: gen_range(0.0, 2.0 * PI),
-            rotation_speed: gen_range(-0.8, 0.8),
-            shape: generate_shape(size),
-        }
-    }
-
-    fn radius(&self) -> f32 {
-        self.size.radius()
-    }
-
-    fn points(&self) -> Vec<Vec2> {
-        self.shape
-            .iter()
-            .map(|vertex| rotate_vector(*vertex, self.angle) + self.position)
-            .collect()
-    }
-
-    fn split(&self) -> Vec<Asteroid> {
-        if let Some(next_size) = self.size.next() {
-            let mut fragments = Vec::with_capacity(2);
-            let base_len = self.velocity.length().max(ASTEROID_MIN_SPEED);
-            let base_angle = self.velocity.to_angle();
-            for i in 0..2 {
-                let offset = Vec2::from_angle(base_angle + (i as f32 - 0.5) * 0.6);
-                let velocity = offset * base_len;
-                fragments.push(Asteroid::new(next_size, self.position, velocity));
-            }
-            fragments
-        } else {
-            Vec::new()
-        }
-    }
-}
-
-#[derive(Clone)]
-struct Bullet {
-    position: Vec2,
-    velocity: Vec2,
-    ttl: f32,
-}
-
-impl Bullet {
-    fn new(position: Vec2, velocity: Vec2) -> Self {
-        Self {
-            position,
-            velocity,
-            ttl: BULLET_TTL,
-        }
-    }
-}
-
-#[derive(Clone)]
-struct Debris {
-    position: Vec2,
-    velocity: Vec2,
-    ttl: f32,
-}
-
-impl Debris {
-    fn new(position: Vec2, velocity: Vec2) -> Self {
-        Self {
-            position,
-            velocity,
-            ttl: DEBRIS_TTL,
-        }
-    }
+    // Rendering helpers live in `render.rs`.
 }
 
 #[derive(Clone)]
@@ -577,6 +258,8 @@ pub struct SimulationStatus {
     pub score: u32,
     pub lives: u32,
     pub game_over: bool,
+    pub invulnerability_enabled: bool,
+    pub run_stats: RunStats,
 }
 
 impl Default for SimulationStatus {
@@ -589,11 +272,13 @@ impl Default for SimulationStatus {
             active_bodies: 1,
             primary_cooldown: 0.0,
             secondary_cooldown: 0.0,
-            frame_time: 1.0 / 60.0,
-            fps: 60.0,
+            frame_time: 1.0 / TARGET_FPS,
+            fps: TARGET_FPS,
             score: 0,
             lives: MAX_LIVES,
             game_over: false,
+            invulnerability_enabled: false,
+            run_stats: RunStats::default(),
         }
     }
 }
